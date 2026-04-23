@@ -1,68 +1,105 @@
-#define MOISTURE_WET_VALUE 400
-#define MOISTURE_DRY_VALUE 3800
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <HTTPClient.h>
 #include <SimpleDHT.h>
 
-const int dataPin = 32;
-const int NUM_SAMPLES = 10;
-const int tempPin= 34;
-int pinDHT11 = ;
+// 🔐 WiFi
+#define WIFI_SSID "naughty"
+#define WIFI_PASSWORD "12345678"
+
+// 🔥 Firebase host
+#define FIREBASE_HOST "soilmoisturedata-44dd2-default-rtdb.asia-southeast1.firebasedatabase.app"
+
+// 🌱 Calibrate these after testing RAW values
+#define MOISTURE_WET_VALUE 800
+#define MOISTURE_DRY_VALUE 3500
+
+// 🌡️ Sensors
+const int soilPin = 32;
+int pinDHT11 = 4;
 SimpleDHT11 dht11(pinDHT11);
-
-int readings[NUM_SAMPLES];
-int readIndex = 0;
-long total = 0;
-
-int moistureValue = 0;
-int moisturePercentage = 0;
-
-int smoothedRead();
 
 void setup() {
   Serial.begin(115200);
-  analogReadResolution(12); // 12-bit = 0 to 4095
-  
-  // Pre-fill buffer
-  for (int i = 0; i < NUM_SAMPLES; i++) {
-    readings[i] = analogRead(dataPin);
-    total += readings[i];
-    delay(10);
+  delay(1000);
+
+  Serial.println("🚀 ESP32 START");
+
+  // 🌐 WiFi connect
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.print("Connecting");
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
   }
+
+  Serial.println("\n✅ WiFi Connected");
+  Serial.print("IP: ");
+  Serial.println(WiFi.localIP());
 }
 
 void loop() {
-  moistureValue = smoothedRead();
 
-  Serial.print("Moisture Raw Value: ");
-  Serial.println(moistureValue);
+  // 🌱 READ SOIL SENSOR
+  int raw = analogRead(soilPin);
 
-  moisturePercentage = map(moistureValue, MOISTURE_WET_VALUE, MOISTURE_DRY_VALUE, 100, 0);
-  moisturePercentage = constrain(moisturePercentage, 0, 100);
+  Serial.print("RAW Moisture: ");
+  Serial.println(raw);
 
-  Serial.print("Moisture Percentage: ");
-  Serial.print(moisturePercentage);
-  Serial.println("%");
+  int moisture = map(raw, MOISTURE_WET_VALUE, MOISTURE_DRY_VALUE, 100, 0);
+  moisture = constrain(moisture, 0, 100);
 
+  Serial.print("Moisture %: ");
+  Serial.println(moisture);
 
-  Serial.println("=================================");
-  byte temperature = 0;
-  byte humidity = 0;
-  int err = SimpleDHTErrSuccess;
-  if ((err = dht11.read(&temperature, &humidity, NULL)) != SimpleDHTErrSuccess) {
-    Serial.print("Read DHT11 failed, err="); Serial.print(SimpleDHTErrCode(err));
-    Serial.print(","); Serial.println(SimpleDHTErrDuration(err)); delay(1000);
+  // 🌡️ READ DHT11
+  byte temp = 0, hum = 0;
+
+  if (dht11.read(&temp, &hum, NULL) != SimpleDHTErrSuccess) {
+    Serial.println("❌ DHT read failed");
+    delay(2000);
     return;
   }
-  
-  Serial.print("Sample OK: ");
-  Serial.print((int)temperature); Serial.print(" *C, "); 
-  Serial.print((int)humidity); Serial.println(" H");
-  delay(3000);
-}
 
-int smoothedRead() {
-  total -= readings[readIndex];
-  readings[readIndex] = analogRead(dataPin);
-  total += readings[readIndex];
-  readIndex = (readIndex + 1) % NUM_SAMPLES;
-  return total / NUM_SAMPLES;
+  Serial.print("Temp: ");
+  Serial.print(temp);
+  Serial.print("°C  Humidity: ");
+  Serial.println(hum);
+
+  // 📡 SEND TO FIREBASE
+  if (WiFi.status() == WL_CONNECTED) {
+
+    WiFiClientSecure client;
+    client.setInsecure();   // bypass SSL cert
+
+    HTTPClient http;
+
+    String url = "https://" + String(FIREBASE_HOST) + "/sensor.json";
+
+    String json = "{";
+    json += "\"moisture\":" + String(moisture) + ",";
+    json += "\"temperature\":" + String(temp) + ",";
+    json += "\"humidity\":" + String(hum);
+    json += "}";
+
+    http.begin(client, url);
+    http.addHeader("Content-Type", "application/json");
+
+    int code = http.PUT(json);
+
+    if (code > 0) {
+      Serial.print("✅ Firebase OK, code: ");
+      Serial.println(code);
+    } else {
+      Serial.print("❌ Firebase Error: ");
+      Serial.println(code);
+    }
+
+    http.end();
+  }
+
+  Serial.println("----------------------");
+
+  delay(5000);
 }
