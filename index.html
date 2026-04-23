@@ -1,132 +1,453 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Smart Agriculture Dashboard</title>
 
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+  
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <style>
+    :root {
+      --bg-gradient: radial-gradient(circle at 15% 50%, #1e293b, #0f172a);
+      --card-bg: rgba(255, 255, 255, 0.03);
+      --card-border: rgba(255, 255, 255, 0.08);
+      
+      /* Accent Colors */
+      --color-moisture: #00f2fe;
+      --color-temp: #ff758c;
+      --color-hum: #10b981;
+    }
+
     * {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
-      font-family: 'Segoe UI', sans-serif;
+      font-family: 'Outfit', sans-serif;
     }
 
     body {
-      background: linear-gradient(135deg, #0f172a, #1e293b);
-      color: white;
+      background: var(--bg-gradient);
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 40px 20px;
+      overflow-x: hidden;
+    }
+
+    /* Header Styles */
+    header {
       text-align: center;
-      padding: 40px;
+      margin-bottom: 40px;
+      position: relative;
     }
 
     h1 {
-      margin-bottom: 30px;
-      font-size: 2.5rem;
-      letter-spacing: 1px;
+      font-size: 2.8rem;
+      font-weight: 700;
+      background: linear-gradient(to right, #ffffff, #94a3b8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 10px;
     }
 
-    .container {
+    .live-status {
       display: flex;
+      align-items: center;
       justify-content: center;
+      gap: 8px;
+      font-size: 0.9rem;
+      color: #94a3b8;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      background-color: #10b981;
+      border-radius: 50%;
+      box-shadow: 0 0 10px #10b981, 0 0 20px #10b981;
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(1.2); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+
+    /* Dashboard Layout */
+    .dashboard {
+      display: flex;
       gap: 30px;
       flex-wrap: wrap;
+      justify-content: center;
+      width: 100%;
+      max-width: 1100px;
+      margin-bottom: 30px;
     }
 
+    /* Card Glassmorphism */
     .card {
-      background: rgba(255, 255, 255, 0.05);
-      backdrop-filter: blur(15px);
-      border-radius: 20px;
+      background: var(--card-bg);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--card-border);
+      border-radius: 30px;
+      padding: 35px 25px;
+      width: 280px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+      transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Chart Card Specifics */
+    .chart-card {
+      width: 100%;
+      max-width: 1100px;
+      height: 400px;
       padding: 25px;
-      width: 220px;
-      box-shadow: 0 10px 25px rgba(0,0,0,0.4);
-      transition: 0.3s ease;
+      align-items: stretch;
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: -100%; width: 50%; height: 100%;
+      background: linear-gradient(to right, transparent, rgba(255,255,255,0.03), transparent);
+      transform: skewX(-20deg);
+      transition: 0.7s;
+      pointer-events: none;
     }
 
     .card:hover {
-      transform: translateY(-10px) scale(1.03);
-      box-shadow: 0 15px 35px rgba(0,0,0,0.6);
+      transform: translateY(-5px);
+      border-color: rgba(255, 255, 255, 0.15);
     }
 
-    .title {
-      font-size: 1.2rem;
-      margin-bottom: 10px;
-      opacity: 0.8;
+    .card:hover::before { left: 150%; }
+
+    /* SVG Progress Rings */
+    .progress-container {
+      position: relative;
+      width: 150px;
+      height: 150px;
+      margin-bottom: 20px;
+    }
+
+    svg {
+      width: 150px;
+      height: 150px;
+      transform: rotate(-90deg);
+    }
+
+    circle {
+      fill: none;
+      stroke-width: 10;
+      stroke-linecap: round;
+    }
+
+    .bg-ring { stroke: rgba(255, 255, 255, 0.05); }
+
+    .progress-ring {
+      stroke-dasharray: 377;
+      stroke-dashoffset: 377;
+      transition: stroke-dashoffset 1.5s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .moisture-ring { stroke: var(--color-moisture); filter: drop-shadow(0 0 8px var(--color-moisture)); }
+    .temp-ring { stroke: var(--color-temp); filter: drop-shadow(0 0 8px var(--color-temp)); }
+    .hum-ring { stroke: var(--color-hum); filter: drop-shadow(0 0 8px var(--color-hum)); }
+
+    /* Value Display Inside Ring */
+    .value-display {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
     }
 
     .value {
-      font-size: 2.8rem;
-      font-weight: bold;
-      transition: 0.3s ease;
+      font-size: 2.2rem;
+      font-weight: 700;
+      line-height: 1;
     }
 
-    /* Color accents */
-    .moisture { color: #38bdf8; }
-    .temp { color: #f97316; }
-    .hum { color: #22c55e; }
+    .unit {
+      font-size: 1rem;
+      color: #94a3b8;
+      font-weight: 400;
+      margin-top: 4px;
+    }
 
-    /* Responsive */
-    @media (max-width: 600px) {
-      .container {
-        flex-direction: column;
-        align-items: center;
-      }
+    /* Card Footer Info */
+    .card-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .card-info i { font-size: 1.5rem; }
+    .card-info span { font-size: 1.1rem; font-weight: 600; color: #cbd5e1; }
+
+    .moisture-icon { color: var(--color-moisture); }
+    .temp-icon { color: var(--color-temp); }
+    .hum-icon { color: var(--color-hum); }
+
+    @media (max-width: 768px) {
+      .dashboard { flex-direction: column; align-items: center; }
+      .card { width: 100%; max-width: 320px; }
+      .chart-card { height: 300px; }
+      h1 { font-size: 2.2rem; }
     }
   </style>
 </head>
-
 <body>
 
-<h1>🌱 Smart Agriculture Dashboard</h1>
+  <header>
+    <h1>Smart Agriculture</h1>
+    <div class="live-status">
+      <div class="dot"></div> System Live
+    </div>
+  </header>
 
-<div class="container">
+  <div class="dashboard">
+    <div class="card">
+      <div class="progress-container">
+        <svg>
+          <circle class="bg-ring" cx="75" cy="75" r="60"></circle>
+          <circle class="progress-ring moisture-ring" id="moisture-ring" cx="75" cy="75" r="60"></circle>
+        </svg>
+        <div class="value-display">
+          <div class="value" id="moisture-val" data-value="0">0</div>
+          <div class="unit">%</div>
+        </div>
+      </div>
+      <div class="card-info">
+        <i class="ph ph-drop moisture-icon"></i>
+        <span>Soil Moisture</span>
+      </div>
+    </div>
 
-  <div class="card">
-    <div class="title">Soil Moisture</div>
-    <div id="moisture" class="value moisture">--</div>
+    <div class="card">
+      <div class="progress-container">
+        <svg>
+          <circle class="bg-ring" cx="75" cy="75" r="60"></circle>
+          <circle class="progress-ring temp-ring" id="temp-ring" cx="75" cy="75" r="60"></circle>
+        </svg>
+        <div class="value-display">
+          <div class="value" id="temp-val" data-value="0">0</div>
+          <div class="unit">°C</div>
+        </div>
+      </div>
+      <div class="card-info">
+        <i class="ph ph-thermometer temp-icon"></i>
+        <span>Temperature</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="progress-container">
+        <svg>
+          <circle class="bg-ring" cx="75" cy="75" r="60"></circle>
+          <circle class="progress-ring hum-ring" id="hum-ring" cx="75" cy="75" r="60"></circle>
+        </svg>
+        <div class="value-display">
+          <div class="value" id="hum-val" data-value="0">0</div>
+          <div class="unit">%</div>
+        </div>
+      </div>
+      <div class="card-info">
+        <i class="ph ph-wind hum-icon"></i>
+        <span>Humidity</span>
+      </div>
+    </div>
   </div>
 
-  <div class="card">
-    <div class="title">Temperature</div>
-    <div id="temp" class="value temp">--</div>
+  <div class="card chart-card">
+    <canvas id="historyChart"></canvas>
   </div>
 
-  <div class="card">
-    <div class="title">Humidity</div>
-    <div id="hum" class="value hum">--</div>
-  </div>
+  <script>
+    // --- 1. FIREBASE CONFIGURATION ---
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      databaseURL: "https://soilmoisturedata-44dd2-default-rtdb.asia-southeast1.firebasedatabase.app/"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
 
-</div>
+    // --- 2. CHART.JS SETUP ---
+    const ctx = document.getElementById('historyChart').getContext('2d');
+    
+    // Create gradient fill for lines
+    const moistureGradient = ctx.createLinearGradient(0, 0, 0, 400);
+    moistureGradient.addColorStop(0, 'rgba(0, 242, 254, 0.2)');
+    moistureGradient.addColorStop(1, 'rgba(0, 242, 254, 0)');
 
-<script>
-  const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    databaseURL: "https://soilmoisturedata-44dd2-default-rtdb.asia-southeast1.firebasedatabase.app/"
-  };
+    const historyChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: [], // Time labels will go here
+        datasets: [
+          {
+            label: 'Moisture (%)',
+            borderColor: '#00f2fe',
+            backgroundColor: moistureGradient,
+            data: [],
+            borderWidth: 2,
+            tension: 0.4, // Curved lines
+            fill: true,
+            pointBackgroundColor: '#0f172a',
+            pointBorderColor: '#00f2fe',
+            pointRadius: 4
+          },
+          {
+            label: 'Temperature (°C)',
+            borderColor: '#ff758c',
+            data: [],
+            borderWidth: 2,
+            tension: 0.4,
+            pointBackgroundColor: '#0f172a',
+            pointBorderColor: '#ff758c',
+            pointRadius: 4
+          },
+          {
+            label: 'Humidity (%)',
+            borderColor: '#10b981',
+            data: [],
+            borderWidth: 2,
+            tension: 0.4,
+            pointBackgroundColor: '#0f172a',
+            pointBorderColor: '#10b981',
+            pointRadius: 4
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            labels: { color: '#e2e8f0', font: { family: 'Outfit' } }
+          },
+          tooltip: {
+            backgroundColor: 'rgba(15, 23, 42, 0.9)',
+            titleFont: { family: 'Outfit' },
+            bodyFont: { family: 'Outfit' },
+            padding: 10,
+            cornerRadius: 8,
+            displayColors: true
+          }
+        },
+        scales: {
+          x: {
+            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+            ticks: { color: '#94a3b8', font: { family: 'Outfit' } }
+          },
+          y: {
+            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+            ticks: { color: '#94a3b8', font: { family: 'Outfit' } },
+            beginAtZero: true
+          }
+        }
+      }
+    });
 
-  firebase.initializeApp(firebaseConfig);
-  const db = firebase.database();
+    // --- 3. UI UPDATE LOGIC ---
+    const circumference = 2 * Math.PI * 60; 
 
-  function animateValue(id, newValue, suffix="") {
-    const el = document.getElementById(id);
-    el.style.transform = "scale(1.2)";
-    setTimeout(() => {
-      el.innerText = newValue + suffix;
-      el.style.transform = "scale(1)";
-    }, 150);
-  }
+    function animateNumber(elementId, newValue) {
+      const el = document.getElementById(elementId);
+      const startValue = parseFloat(el.getAttribute('data-value')) || 0;
+      const duration = 1000;
+      const startTime = performance.now();
 
-  db.ref("sensor").on("value", (snapshot) => {
-    const data = snapshot.val();
-
-    if (data) {
-      animateValue("moisture", data.moisture, "%");
-      animateValue("temp", data.temperature, "°C");
-      animateValue("hum", data.humidity, "%");
+      function updateNumber(currentTime) {
+        const elapsedTime = currentTime - startTime;
+        const progress = Math.min(elapsedTime / duration, 1);
+        const easeProgress = 1 - Math.pow(1 - progress, 4);
+        const currentVal = startValue + (newValue - startValue) * easeProgress;
+        
+        el.innerText = currentVal % 1 === 0 ? Math.round(currentVal) : currentVal.toFixed(1);
+        
+        if (progress < 1) {
+          requestAnimationFrame(updateNumber);
+        } else {
+          el.setAttribute('data-value', newValue);
+        }
+      }
+      requestAnimationFrame(updateNumber);
     }
-  });
-</script>
+
+    function animateRing(ringId, value, maxValue) {
+      const ring = document.getElementById(ringId);
+      const safeValue = Math.min(value, maxValue); 
+      const percent = safeValue / maxValue;
+      const offset = circumference - (percent * circumference);
+      ring.style.strokeDashoffset = offset;
+    }
+
+    // Process new data
+    function updateDashboard(data) {
+      if (!data) return;
+
+      // 1. Update Top Cards
+      animateNumber("moisture-val", data.moisture);
+      animateRing("moisture-ring", data.moisture, 100);
+
+      animateNumber("temp-val", data.temperature);
+      animateRing("temp-ring", data.temperature, 50); 
+
+      animateNumber("hum-val", data.humidity);
+      animateRing("hum-ring", data.humidity, 100);
+
+      // 2. Update Graph
+      const now = new Date();
+      const timeString = now.getHours().toString().padStart(2, '0') + ':' + 
+                         now.getMinutes().toString().padStart(2, '0') + ':' + 
+                         now.getSeconds().toString().padStart(2, '0');
+
+      // Add new data to chart
+      historyChart.data.labels.push(timeString);
+      historyChart.data.datasets[0].data.push(data.moisture);
+      historyChart.data.datasets[1].data.push(data.temperature);
+      historyChart.data.datasets[2].data.push(data.humidity);
+
+      // Keep only the last 15 data points to prevent crowding
+      if (historyChart.data.labels.length > 15) {
+        historyChart.data.labels.shift();
+        historyChart.data.datasets[0].data.shift();
+        historyChart.data.datasets[1].data.shift();
+        historyChart.data.datasets[2].data.shift();
+      }
+
+      historyChart.update();
+    }
+
+    // --- 4. FIREBASE LISTENER ---
+    db.ref("sensor").on("value", (snapshot) => {
+      const data = snapshot.val();
+      updateDashboard(data);
+    });
+
+  </script>
 
 </body>
 </html>
